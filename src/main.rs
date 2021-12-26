@@ -98,6 +98,13 @@ mod lex {
         }
     }
 
+    enum Encoding {
+        None,
+        WChar,
+        Char16,
+        Char32,
+    }
+
     #[derive(Debug)]
     pub enum Keyword {
         Semi,
@@ -107,18 +114,102 @@ mod lex {
         RParen,
         LBracket,
         RBracket,
+
         OpAdd,
         OpInc,
         OpAddEq,
+
+        OpSub,
+        OpDec,
+        OpSubEq,
+
+        OpMul,
+        OpMulEq,
+
+        OpDiv,
+        OpDivEq,
+
+        OpMod,
+        OpModEq,
+
+        OpAssign,
+        OpEq,
+        OpNeq,
+
+        OpArrow,
+
+        OpGt,
+        OpLt,
+        OpGtEq,
+        OpLtEq,
+
+        OpBitOr,
+        OpBitAnd,
+        OpLogOr,
+        OpLogAnd,
+
+        OpShiftLeft,
+        OpShiftRight,
+
+        OpShiftLeftEq,
+        OpShiftRightEq,
+
+        OpXor,
+        OpXorEq,
+
+        KwHash,
+
+        KwAlignas,
+        KwAlignof,
+        KwAuto,
+        KwBool,
+        KwBreak,
+        KwCase,
+        KwChar,
+        KwComplex,
+        KwConst,
+        KwContinue,
+        KwDefault,
+        KwDo,
+        KwDouble,
+        KwElse,
+        KwEnum,
+        KwExtern,
+        KwFloat,
+        KwFor,
+        KwGeneric,
+        KwGoto,
+        KwIf,
+        KwImaginary,
+        KwInline,
+        KwInt,
+        KwLong,
+        KwNoreturn,
+        KwRegister,
+        KwRestrict,
+        KwReturn,
+        KwHashhash,
+        KwShort,
+        KwSigned,
+        KwSizeof,
+        KwStatic,
+        KwStatic_assert,
+        KwStruct,
+        KwSwitch,
+        KwEllipsis,
+        KwTypedef,
+        KwTypeof,
+        KwUnion,
+        KwUnsigned,
+        KwVoid,
+        KwVolatile,
+        KwWhile,
     }
 
     impl Keyword {
         fn to_string(&self) -> String {
             use Keyword::*;
             let p = match self {
-                OpAdd => "+",
-                OpInc => "++",
-                OpAddEq => "+=",
                 LBrace => "{",
                 RBrace => "}",
                 LBracket => "[",
@@ -126,6 +217,93 @@ mod lex {
                 LParen => "(",
                 RParen => ")",
                 Semi => ";",
+                OpAdd => "+",
+                OpInc => "++",
+                OpAddEq => "+=",
+                OpSub => "-",
+                OpDec => "--",
+                OpSubEq => "-=",
+
+                OpMul => "*",
+                OpMulEq => "*=",
+
+                OpDiv => "/",
+                OpDivEq => "/=",
+
+                OpMod => "%",
+                OpModEq => "%=",
+
+                OpAssign => "=",
+                OpEq => "==",
+                OpNeq => "!=",
+
+                OpArrow => "->",
+
+                OpGt => ">",
+                OpLt => "<",
+                OpGtEq => ">=",
+                OpLtEq => "<=",
+
+                OpBitOr => "|",
+                OpBitAnd => "&",
+                OpLogOr => "||",
+                OpLogAnd => "&&",
+
+                OpShiftLeft => "<<",
+                OpShiftRight => ">>",
+
+                OpShiftLeftEq => "<<=",
+                OpShiftRightEq => ">>=",
+
+                OpXor => "^",
+                OpXorEq => "^=",
+
+                KwHash => "#",
+                KwAlignas => "_Alignas",
+                KwAlignof => "_Alignof",
+                KwAuto => "auto",
+                KwBool => "_Bool",
+                KwBreak => "break",
+                KwCase => "case",
+                KwChar => "char",
+                KwComplex => "_Complex",
+                KwConst => "const",
+                KwContinue => "continue",
+                KwDefault => "default",
+                KwDo => "do",
+                KwDouble => "double",
+                KwElse => "else",
+                KwEnum => "enum",
+                KwExtern => "extern",
+                KwFloat => "float",
+                KwFor => "for",
+                KwGeneric => "_Generic",
+                KwGoto => "goto",
+                KwIf => "if",
+                KwImaginary => "_Imaginary",
+                KwInline => "inline",
+                KwInt => "int",
+                KwLong => "long",
+                KwNoreturn => "_Noreturn",
+                KwRegister => "register",
+                KwRestrict => "restrict",
+                KwReturn => "return",
+                KwHashhash => "##",
+                KwShort => "short",
+                KwSigned => "signed",
+                KwSizeof => "sizeof",
+                KwStatic => "static",
+                KwStatic_assert => "_Static_assert",
+                KwStruct => "struct",
+                KwSwitch => "switch",
+                KwEllipsis => "...",
+                KwTypedef => "typedef",
+                KwTypeof => "typeof",
+                KwUnion => "union",
+                KwUnsigned => "unsigned",
+                KwVoid => "void",
+                KwVolatile => "volatile",
+                KwWhile => "while",
             };
 
             p.to_string()
@@ -134,9 +312,6 @@ mod lex {
         fn from(keyword: &str) -> Self {
             use Keyword::*;
             match keyword {
-                "+" => OpAdd,
-                "++" => OpInc,
-                "+=" => OpAddEq,
                 "(" => LParen,
                 ")" => RParen,
                 "{" => LBrace,
@@ -144,6 +319,94 @@ mod lex {
                 "[" => LBracket,
                 "]" => RBracket,
                 ";" => Semi,
+                "+" => OpAdd,
+                "++" => OpInc,
+                "+=" => OpAddEq,
+                "-" => OpSub,
+                "--" => OpDec,
+                "-=" => OpSubEq,
+
+                "*" => OpMul,
+                "*=" => OpMulEq,
+
+                "/" => OpDiv,
+                "/=" => OpDivEq,
+
+                "%" => OpMod,
+                "%=" => OpModEq,
+
+                "=" => OpAssign,
+                "==" => OpEq,
+                "!=" => OpNeq,
+
+                "->" => OpArrow,
+
+                ">" => OpGt,
+                "<" => OpLt,
+                ">=" => OpGtEq,
+                "<=" => OpLtEq,
+
+                "|" => OpBitOr,
+                "&" => OpBitAnd,
+                "||" => OpLogOr,
+                "&&" => OpLogAnd,
+
+                "<<" => OpShiftLeft,
+                ">>" => OpShiftRight,
+
+                "<<=" => OpShiftLeftEq,
+                ">>=" => OpShiftRightEq,
+
+                "^" => OpXor,
+                "^=" => OpXorEq,
+
+                "#" => KwHash,
+                "_Alignas" => KwAlignas,
+                "_Alignof" => KwAlignof,
+                "auto" => KwAuto,
+                "_Bool" => KwBool,
+                "break" => KwBreak,
+                "case" => KwCase,
+                "char" => KwChar,
+                "_Complex" => KwComplex,
+                "const" => KwConst,
+                "continue" => KwContinue,
+                "default" => KwDefault,
+                "do" => KwDo,
+                "double" => KwDouble,
+                "else" => KwElse,
+                "enum" => KwEnum,
+                "extern" => KwExtern,
+                "float" => KwFloat,
+                "for" => KwFor,
+                "_Generic" => KwGeneric,
+                "goto" => KwGoto,
+                "if" => KwIf,
+                "_Imaginary" => KwImaginary,
+                "inline" => KwInline,
+                "int" => KwInt,
+                "long" => KwLong,
+                "_Noreturn" => KwNoreturn,
+                "register" => KwRegister,
+                "restrict" => KwRestrict,
+                "return" => KwReturn,
+                "##" => KwHashhash,
+                "short" => KwShort,
+                "signed" => KwSigned,
+                "sizeof" => KwSizeof,
+                "static" => KwStatic,
+                "_Static_assert" => KwStatic_assert,
+                "struct" => KwStruct,
+                "switch" => KwSwitch,
+                "..." => KwEllipsis,
+                "typedef" => KwTypedef,
+                "typeof" => KwTypeof,
+                "union" => KwUnion,
+                "unsigned" => KwUnsigned,
+                "void" => KwVoid,
+                "volatile" => KwVolatile,
+                "while" => KwWhile,
+
                 _ => panic!("Unrecognized keyword {}", keyword),
             }
         }
@@ -224,6 +487,22 @@ mod lex {
             file.current_pos = file.current_pos.previous(ch);
         }
 
+        pub fn next(&mut self, expect: char) -> bool {
+            let ch = self.read_char();
+            match ch {
+                Some(ch) => {
+                    self.unread(ch);
+                    ch == expect
+                }
+                None => false,
+            }
+        }
+        pub fn peek(&mut self) -> Option<char> {
+            let ch = self.read_char()?;
+            self.unread(ch);
+            Some(ch)
+        }
+
         pub fn read_token(&mut self) -> Option<Token> {
             let ch = self.read_char()?;
             let file = &mut self.files[self.index];
@@ -236,6 +515,7 @@ mod lex {
 
             match ch {
                 '\n' => Some(self.make_newline_token()),
+                // ':' => {}
                 '{' | '}' | '[' | ']' | '(' | ')' | '?' | ',' | '~' | ';' => {
                     Some(self.make_keyword_token(Keyword::from(&ch.to_string())))
                 }
@@ -266,10 +546,12 @@ mod lex {
                 }
 
                 number_chars.push(ch);
+                last = ch;
             }
 
-            let token_index = self.count;
-            self.count += 1;
+            let file = &mut self.files[self.index];
+            let token_index = file.tokens;
+            file.tokens += 1;
             Token {
                 kind: TokenKind::Number(number_chars.into_iter().collect()),
                 bol: pos.column == 1,
@@ -298,8 +580,9 @@ mod lex {
                 }
             }
 
-            let token_index = self.count;
-            self.count += 1;
+            let file = &mut self.files[self.index];
+            let token_index = file.tokens;
+            file.tokens += 1;
             Token {
                 kind: TokenKind::Ident(ident_chars.into_iter().collect()),
                 bol: pos.column == 1,
@@ -331,8 +614,8 @@ mod lex {
         fn make_newline_token(&mut self) -> Token {
             let file = &mut self.files[self.index];
 
-            let token_index = self.count;
-            self.count += 1;
+            let token_index = file.tokens;
+            file.tokens += 1;
             Token {
                 kind: TokenKind::Newline,
                 pos: file.current_pos.clone(),
@@ -345,8 +628,8 @@ mod lex {
         fn make_keyword_token(&mut self, keyword: Keyword) -> Token {
             let file = &mut self.files[self.index];
 
-            let token_index = self.count;
-            self.count += 1;
+            let token_index = file.tokens;
+            file.tokens += 1;
 
             Token {
                 kind: TokenKind::Keyword(keyword),
@@ -360,8 +643,8 @@ mod lex {
         fn make_space_token(&mut self, pos: Pos) -> Token {
             let file = &mut self.files[self.index];
 
-            let token_index = self.count;
-            self.count += 1;
+            let token_index = file.tokens;
+            file.tokens += 1;
             Token {
                 kind: TokenKind::Space,
                 pos: pos,
