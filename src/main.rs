@@ -108,6 +108,7 @@ mod lex {
     #[derive(Debug)]
     pub enum Keyword {
         Semi,
+        Colon,
         LBrace,
         RBrace,
         LParen,
@@ -134,6 +135,7 @@ mod lex {
 
         OpAssign,
         OpEq,
+        OpNot,
         OpNeq,
 
         OpArrow,
@@ -145,6 +147,8 @@ mod lex {
 
         OpBitOr,
         OpBitAnd,
+        OpBitOrEq,
+        OpBitAndEq,
         OpLogOr,
         OpLogAnd,
 
@@ -216,6 +220,7 @@ mod lex {
                 RBracket => "]",
                 LParen => "(",
                 RParen => ")",
+                Colon => ":",
                 Semi => ";",
                 OpAdd => "+",
                 OpInc => "++",
@@ -235,6 +240,7 @@ mod lex {
 
                 OpAssign => "=",
                 OpEq => "==",
+                OpNot => "!",
                 OpNeq => "!=",
 
                 OpArrow => "->",
@@ -246,6 +252,8 @@ mod lex {
 
                 OpBitOr => "|",
                 OpBitAnd => "&",
+                OpBitOrEq => "|=",
+                OpBitAndEq => "&=",
                 OpLogOr => "||",
                 OpLogAnd => "&&",
 
@@ -319,6 +327,7 @@ mod lex {
                 "[" => LBracket,
                 "]" => RBracket,
                 ";" => Semi,
+                ":" => Colon,
                 "+" => OpAdd,
                 "++" => OpInc,
                 "+=" => OpAddEq,
@@ -337,6 +346,7 @@ mod lex {
 
                 "=" => OpAssign,
                 "==" => OpEq,
+                "!" => OpNot,
                 "!=" => OpNeq,
 
                 "->" => OpArrow,
@@ -348,6 +358,8 @@ mod lex {
 
                 "|" => OpBitOr,
                 "&" => OpBitAnd,
+                "|=" => OpBitOrEq,
+                "&=" => OpBitAndEq,
                 "||" => OpLogOr,
                 "&&" => OpLogAnd,
 
@@ -489,18 +501,42 @@ mod lex {
 
         pub fn next(&mut self, expect: char) -> bool {
             let ch = self.read_char();
-            match ch {
-                Some(ch) => {
-                    self.unread(ch);
-                    ch == expect
-                }
-                None => false,
+            id ch == Some(expect) {
+                return true;
             }
+            if let Some(ch) = ch {
+                self.unread(ch);
+            }
+            false
         }
         pub fn peek(&mut self) -> Option<char> {
             let ch = self.read_char()?;
             self.unread(ch);
             Some(ch)
+        }
+
+        pub fn read_rep(&mut self, expect: char, kw1: Keyword, kw2: Keyword) -> Token {
+            if self.next(expect) {
+                self.make_keyword_token(kw1)
+            } else {
+                self.make_keyword_token(kw2)
+            }
+        }
+        pub fn read_rep2(
+            &mut self,
+            expect1: char,
+            kw1: Keyword,
+            expect2: char,
+            kw2: Keyword,
+            kw3: Keyword,
+        ) -> Token {
+            if self.next(expect1) {
+                self.make_keyword_token(kw1)
+            } else if self.next(expect2) {
+                self.make_keyword_token(kw2)
+            } else {
+                self.make_keyword_token(kw3)
+            }
         }
 
         pub fn read_token(&mut self) -> Option<Token> {
@@ -513,18 +549,62 @@ mod lex {
                 return Some(self.read_space_token(pos));
             }
 
-            match ch {
-                '\n' => Some(self.make_newline_token()),
-                // ':' => {}
-                '{' | '}' | '[' | ']' | '(' | ')' | '?' | ',' | '~' | ';' => {
-                    Some(self.make_keyword_token(Keyword::from(&ch.to_string())))
-                }
+            let token = match ch {
+                '\n' => self.make_newline_token(),
+                ':' => self.read_rep('>', Keyword::RBracket, Keyword::Colon),
+
+                '#' => self.read_rep('#', Keyword::KwHashhash, Keyword::KwHash),
+                '+' => self.read_rep2('+', Keyword::OpInc, '=', Keyword::OpAddEq, Keyword::OpAdd),
+                '*' => self.read_rep('=', Keyword::OpMulEq, Keyword::OpMul),
+                '=' => self.read_rep('=', Keyword::OpEq, Keyword::OpAssign),
+                '!' => self.read_rep('=', Keyword::OpNeq, Keyword::OpNot),
+                '&' => self.read_rep2(
+                    '&',
+                    Keyword::OpLogAnd,
+                    '=',
+                    Keyword::OpBitAndEq,
+                    Keyword::OpBitAnd,
+                ),
+                '|' => self.read_rep2(
+                    '|',
+                    Keyword::OpLogOr,
+                    '=',
+                    Keyword::OpBitOrEq,
+                    Keyword::OpBitOr,
+                ),
+                '^' => self.read_rep('=', Keyword::OpXorEq, Keyword::OpXor),
+                // TODO Read String
+                // TODO Read Char
+                '/' => self.read_rep('=', Keyword::OpDivEq, Keyword::OpDiv),
                 'a'..='t' | 'v'..='z' | 'A'..='K' | 'M'..='T' | 'V'..='Z' => {
-                    Some(self.read_ident(ch, pos))
+                    self.read_ident(ch, pos)
                 }
-                '0'..='9' => Some(self.read_number(ch, pos)),
+                // TODO Read L U u
+                '{' | '}' | '[' | ']' | '(' | ')' | '?' | ',' | '~' | ';' => {
+                    self.make_keyword_token(Keyword::from(&ch.to_string()))
+                }
+                // TODO Read .
+                '-' => {
+                    if self.next('-') { self.make_keyword_token(Keyword::OpDec) }
+                    else if self.next('>') { self.make_keyword_token(Keyword::Arrow) }
+                    else if self.next('=') { self.make_keyword_token(Keyword::OpSubEq) }
+                    else  { self.make_keyword_token(Keyword::OpSub) }
+                }
+                '<' => {
+                    if self.next('<') { self.read_rep('=', Keyword::OpShiftLeftEq, Keyword::OpShiftLeft ) }
+                    else if self.next('=') { self.make_keyword_token(Keyword::OpLtEq) }
+                    else if self.next(':') { self.make_keyword_token(Keyword::LBracket) }
+                    else if self.next('%') { self.make_keyword_token(Keyword::LBrace) }
+                    else  { self.make_keyword_token(Keyword::OpLt) }
+
+                }
+
+
+                '0'..='9' => self.read_number(ch, pos),
                 _ => panic!("Unrecognized character token {}", ch),
-            }
+            };
+
+            Some(token)
         }
 
         pub fn read_number(&mut self, ch: char, pos: Pos) -> Token {
