@@ -23,10 +23,12 @@ fn main() {
 
     let mut lexer = Lexer::new(file_path.to_string());
 
-    for i in 0..20 {
+    loop {
         let token = lexer.read_token();
         if let Some(token) = token {
             dbg!(token.kind);
+        } else {
+            break;
         }
     }
 }
@@ -34,7 +36,7 @@ fn main() {
 mod lex {
     use std::fs;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, Copy)]
     pub struct Pos {
         line: usize,
         column: usize,
@@ -107,6 +109,7 @@ mod lex {
 
     #[derive(Debug)]
     pub enum Keyword {
+        Comma,
         Semi,
         Colon,
         LBrace,
@@ -139,6 +142,8 @@ mod lex {
         OpNeq,
 
         OpArrow,
+        OpDot,
+        OpTernary,
 
         OpGt,
         OpLt,
@@ -222,6 +227,7 @@ mod lex {
                 RParen => ")",
                 Colon => ":",
                 Semi => ";",
+                Comma => ",",
                 OpAdd => "+",
                 OpInc => "++",
                 OpAddEq => "+=",
@@ -244,6 +250,8 @@ mod lex {
                 OpNeq => "!=",
 
                 OpArrow => "->",
+                OpDot => ".",
+                OpTernary => "?",
 
                 OpGt => ">",
                 OpLt => "<",
@@ -327,6 +335,7 @@ mod lex {
                 "[" => LBracket,
                 "]" => RBracket,
                 ";" => Semi,
+                "," => Comma,
                 ":" => Colon,
                 "+" => OpAdd,
                 "++" => OpInc,
@@ -350,6 +359,8 @@ mod lex {
                 "!=" => OpNeq,
 
                 "->" => OpArrow,
+                "." => OpDot,
+                "?" => OpDot,
 
                 ">" => OpGt,
                 "<" => OpLt,
@@ -469,7 +480,7 @@ mod lex {
             }
         }
 
-        pub fn read_char(&mut self) -> Option<char> {
+        pub fn read(&mut self) -> Option<char> {
             if self.end {
                 return None;
             }
@@ -500,8 +511,8 @@ mod lex {
         }
 
         pub fn next(&mut self, expect: char) -> bool {
-            let ch = self.read_char();
-            id ch == Some(expect) {
+            let ch = self.read();
+            if ch == Some(expect) {
                 return true;
             }
             if let Some(ch) = ch {
@@ -510,7 +521,7 @@ mod lex {
             false
         }
         pub fn peek(&mut self) -> Option<char> {
-            let ch = self.read_char()?;
+            let ch = self.read()?;
             self.unread(ch);
             Some(ch)
         }
@@ -540,13 +551,29 @@ mod lex {
         }
 
         pub fn read_token(&mut self) -> Option<Token> {
-            let ch = self.read_char()?;
+            let ch = self.read()?;
             let file = &mut self.files[self.index];
             let pos = file.current_pos.clone();
 
             // TODO Are \f and \v also handled here
             if ch.is_whitespace() && ch != '\n' {
                 return Some(self.read_space_token(pos));
+            }
+
+            if ch == '/' {
+                if self.next('*') {
+                    self.skip_block_comment();
+                    return Some(self.make_space_token(pos));
+                }
+
+                if self.next('/') {
+                    self.skip_line();
+                    return Some(self.make_space_token(pos));
+                }
+            }
+
+            if ch == ',' {
+                println!("Comma");
             }
 
             let token = match ch {
@@ -573,45 +600,200 @@ mod lex {
                     Keyword::OpBitOr,
                 ),
                 '^' => self.read_rep('=', Keyword::OpXorEq, Keyword::OpXor),
-                // TODO Read String
-                // TODO Read Char
+                '"' => self.read_string(pos, Encoding::None),
+                '\'' => self.read_char(pos),
                 '/' => self.read_rep('=', Keyword::OpDivEq, Keyword::OpDiv),
-                'a'..='t' | 'v'..='z' | 'A'..='K' | 'M'..='T' | 'V'..='Z' => {
+                'a'..='t' | 'v'..='z' | 'A'..='K' | 'M'..='T' | 'V'..='Z' | '_' | '$' => {
                     self.read_ident(ch, pos)
                 }
-                // TODO Read L U u
+                '0'..='9' => self.read_number(ch, pos),
+                // TODO handle wchar  encoding and chr 32 encoding
+                'L' | 'U' => self.read_ident(ch, pos),
+                // TODO handle char 16 encoding and char 8 encoding
+                'u' => self.read_ident(ch, pos),
+                '.' => {
+                    if let Some(c2) = self.peek() {
+                        if c2.is_ascii_digit() {
+                            self.read_number(ch, pos)
+                        } else if self.next('.') {
+                            if self.next('.') {
+                                self.make_keyword_token(Keyword::KwEllipsis)
+                            } else {
+                                self.unread('.');
+                                self.read_ident('.', pos)
+                            }
+                        } else {
+                            self.make_keyword_token(Keyword::OpDot)
+                        }
+                    } else {
+                        self.make_keyword_token(Keyword::OpDot)
+                    }
+                }
                 '{' | '}' | '[' | ']' | '(' | ')' | '?' | ',' | '~' | ';' => {
                     self.make_keyword_token(Keyword::from(&ch.to_string()))
                 }
-                // TODO Read .
                 '-' => {
-                    if self.next('-') { self.make_keyword_token(Keyword::OpDec) }
-                    else if self.next('>') { self.make_keyword_token(Keyword::Arrow) }
-                    else if self.next('=') { self.make_keyword_token(Keyword::OpSubEq) }
-                    else  { self.make_keyword_token(Keyword::OpSub) }
+                    if self.next('-') {
+                        self.make_keyword_token(Keyword::OpDec)
+                    } else if self.next('>') {
+                        self.make_keyword_token(Keyword::OpArrow)
+                    } else if self.next('=') {
+                        self.make_keyword_token(Keyword::OpSubEq)
+                    } else {
+                        self.make_keyword_token(Keyword::OpSub)
+                    }
                 }
                 '<' => {
-                    if self.next('<') { self.read_rep('=', Keyword::OpShiftLeftEq, Keyword::OpShiftLeft ) }
-                    else if self.next('=') { self.make_keyword_token(Keyword::OpLtEq) }
-                    else if self.next(':') { self.make_keyword_token(Keyword::LBracket) }
-                    else if self.next('%') { self.make_keyword_token(Keyword::LBrace) }
-                    else  { self.make_keyword_token(Keyword::OpLt) }
-
+                    if self.next('<') {
+                        self.read_rep('=', Keyword::OpShiftLeftEq, Keyword::OpShiftLeft)
+                    } else if self.next('=') {
+                        self.make_keyword_token(Keyword::OpLtEq)
+                    } else if self.next(':') {
+                        self.make_keyword_token(Keyword::LBracket)
+                    } else if self.next('%') {
+                        self.make_keyword_token(Keyword::LBrace)
+                    } else {
+                        self.make_keyword_token(Keyword::OpLt)
+                    }
+                }
+                '>' => {
+                    if self.next('=') {
+                        self.make_keyword_token(Keyword::OpGtEq)
+                    } else if self.next('>') {
+                        self.read_rep('=', Keyword::OpShiftRightEq, Keyword::OpShiftRight)
+                    } else {
+                        self.make_keyword_token(Keyword::OpGt)
+                    }
+                }
+                '%' => {
+                    let token = self.read_hash_digraph(pos);
+                    if let Some(token) = token {
+                        token
+                    } else {
+                        self.read_rep('=', Keyword::OpModEq, Keyword::OpMod)
+                    }
                 }
 
-
-                '0'..='9' => self.read_number(ch, pos),
                 _ => panic!("Unrecognized character token {}", ch),
             };
 
             Some(token)
         }
 
-        pub fn read_number(&mut self, ch: char, pos: Pos) -> Token {
-            let mut number_chars = vec![ch];
+        fn skip_block_comment(&mut self) {
+            let mut may_be_end = false;
+            loop {
+                if let Some(ch) = self.read() {
+                    if ch == '/' && may_be_end {
+                        break;
+                    }
+                    may_be_end = ch == '*';
+                } else {
+                    panic!("Premature end of block comment")
+                }
+            }
+        }
+
+        fn skip_line(&mut self) {
+            loop {
+                if let Some(ch) = self.read() {
+                    if ch == '\n' {
+                        self.unread(ch);
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+
+        fn read_char(&mut self, pos: Pos) -> Token {
+            let ch = self.read();
+            let ch2 = self.read();
+            match (ch, ch2) {
+                (Some('\\'), Some(ch2)) => {
+                    let escaped_char = match ch2 {
+                        '\'' | '"' | '?' | '\\' => ch2,
+                        'a' => '\x07',
+                        'b' => '\x08',
+                        'v' => '\x0B',
+                        'f' => '\x0C',
+                        'n' => '\n',
+                        'r' => '\r',
+                        't' => '\t',
+                        'e' => '\x1b',
+                        '0'..='7' => self.read_octal_char(pos),
+                        _ => panic!("Unknown escaped character"),
+                    };
+                    let ch2 = self.read();
+                    if ch2 == Some('\'') {
+                        let file = &mut self.files[self.index];
+                        let token_index = file.tokens;
+                        file.tokens += 1;
+                        Token {
+                            kind: TokenKind::Char(escaped_char),
+                            pos: pos,
+                            space: false,
+                            bol: false,
+                            count: token_index,
+                        }
+                    } else {
+                        panic!("Unterminated char")
+                    }
+                }
+                (Some(ch), Some(ch2)) => {
+                    if ch2 == '\'' {
+                        let file = &mut self.files[self.index];
+                        let token_index = file.tokens;
+                        file.tokens += 1;
+                        Token {
+                            kind: TokenKind::Char(ch),
+                            pos: pos,
+                            space: false,
+                            bol: false,
+                            count: token_index,
+                        }
+                    } else {
+                        panic!("Unterminated char")
+                    }
+                }
+                _ => panic!("Unterminated char"),
+            }
+        }
+
+        fn read_octal_char(&mut self, pos: Pos) -> char {
+            unimplemented!();
+        }
+
+        fn read_string(&mut self, pos: Pos, encoding: Encoding) -> Token {
+            let mut string = String::from("\"");
+            loop {
+                if let Some(ch) = self.read() {
+                    string.push(ch);
+                    if ch == '"' {
+                        break;
+                    }
+                } else {
+                    panic!("Premature end of string")
+                }
+            }
+            let file = &mut self.files[self.index];
+            let token_index = file.tokens;
+            file.tokens += 1;
+            Token {
+                kind: TokenKind::String(string),
+                pos: pos,
+                space: false,
+                bol: false,
+                count: token_index,
+            }
+        }
+
+        fn read_number(&mut self, ch: char, pos: Pos) -> Token {
+            let mut number_chars = ch.to_string();
             let mut last = ch;
             loop {
-                let ch = self.read_char();
+                let ch = self.read();
                 if ch == None {
                     break;
                 }
@@ -633,7 +815,7 @@ mod lex {
             let token_index = file.tokens;
             file.tokens += 1;
             Token {
-                kind: TokenKind::Number(number_chars.into_iter().collect()),
+                kind: TokenKind::Number(number_chars),
                 bol: pos.column == 1,
                 pos: pos,
                 space: false,
@@ -645,7 +827,7 @@ mod lex {
             let mut ident_chars = vec![ch];
 
             loop {
-                let ch = self.read_char();
+                let ch = self.read();
                 if ch == None {
                     break;
                 }
@@ -674,7 +856,7 @@ mod lex {
 
         pub fn read_space_token(&mut self, pos: Pos) -> Token {
             loop {
-                let ch = self.read_char();
+                let ch = self.read();
                 if ch == None {
                     break;
                 }
@@ -691,8 +873,26 @@ mod lex {
             self.make_space_token(pos)
         }
 
+        fn read_hash_digraph(&mut self, pos: Pos) -> Option<Token> {
+            if self.next('>') {
+                return Some(self.make_keyword_token(Keyword::RBrace));
+            }
+            if self.next(':') {
+                if self.next('%') {
+                    if self.next(':') {
+                        return Some(self.make_keyword_token(Keyword::KwHashhash));
+                    }
+                    self.unread('%');
+                }
+                return Some(self.make_keyword_token(Keyword::KwHash));
+            }
+            return None;
+        }
+
         fn make_newline_token(&mut self) -> Token {
             let file = &mut self.files[self.index];
+
+            println!("{:?}", &file.current_pos);
 
             let token_index = file.tokens;
             file.tokens += 1;
